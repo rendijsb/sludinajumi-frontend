@@ -31,7 +31,7 @@ const HomePage = () => {
                     price: 45000,
                     currency: 'EUR',
                     location: 'Rīga',
-                    image: 'https://via.placeholder.com/300x200',
+                    image: 'https://picsum.photos/300/200?random=1',
                     category: 'Transportlīdzekļi'
                 },
                 {
@@ -40,7 +40,7 @@ const HomePage = () => {
                     price: 850,
                     currency: 'EUR',
                     location: 'Rīga',
-                    image: 'https://via.placeholder.com/300x200',
+                    image: 'https://picsum.photos/300/200?random=2',
                     category: 'Nekustamais īpašums'
                 },
                 {
@@ -49,7 +49,7 @@ const HomePage = () => {
                     price: 1200,
                     currency: 'EUR',
                     location: 'Liepāja',
-                    image: 'https://via.placeholder.com/300x200',
+                    image: 'https://picsum.photos/300/200?random=3',
                     category: 'Elektronika'
                 },
                 {
@@ -58,7 +58,7 @@ const HomePage = () => {
                     price: 2500,
                     currency: 'EUR',
                     location: 'Rīga',
-                    image: 'https://via.placeholder.com/300x200',
+                    image: 'https://picsum.photos/300/200?random=4',
                     category: 'Darbs'
                 }
             ];
@@ -75,6 +75,29 @@ const HomePage = () => {
     const handleSearch = (e) => {
         e.preventDefault();
         console.log('Searching for:', searchQuery, 'in category:', selectedCategory);
+    };
+
+    const handleImageError = (e) => {
+        // Fallback to a gradient background if image fails to load
+        e.target.style.display = 'none';
+        const parent = e.target.parentNode;
+        if (!parent.querySelector('.image-fallback')) {
+            const fallback = document.createElement('div');
+            fallback.className = 'image-fallback';
+            fallback.style.cssText = `
+                width: 100%;
+                height: 200px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 48px;
+                border-radius: 8px 8px 0 0;
+            `;
+            fallback.textContent = '📷';
+            parent.insertBefore(fallback, e.target);
+        }
     };
 
     if (loading) {
@@ -152,11 +175,20 @@ const HomePage = () => {
                     <div className="grid grid-cols-4">
                         {recentAds.map(ad => (
                             <Link key={ad.id} to={`/ad/${ad.id}`} className="card" style={{ textDecoration: 'none', color: 'inherit' }}>
-                                <img
-                                    src={ad.image}
-                                    alt={ad.title}
-                                    style={{ width: '100%', height: '200px', objectFit: 'cover' }}
-                                />
+                                <div style={{ position: 'relative', overflow: 'hidden' }}>
+                                    <img
+                                        src={ad.image}
+                                        alt={ad.title}
+                                        style={{
+                                            width: '100%',
+                                            height: '200px',
+                                            objectFit: 'cover',
+                                            borderRadius: '12px 12px 0 0'
+                                        }}
+                                        onError={handleImageError}
+                                        loading="lazy"
+                                    />
+                                </div>
                                 <div className="card-body">
                                     <h3 className="card-title" style={{ fontSize: '16px', marginBottom: '8px' }}>
                                         {ad.title}

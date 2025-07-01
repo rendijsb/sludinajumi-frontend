@@ -1,27 +1,29 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import api from '../services/api';
+import React, {
+    createContext,
+    useContext,
+    useReducer,
+    useEffect,
+    useCallback,
+} from 'react';
+import api from '../services/api'; // axios instance
 
 const AuthContext = createContext();
+
+const initialState = {
+    isAuthenticated: false,
+    user: null,
+    token: localStorage.getItem('token'),
+    loading: true,
+    error: null,
+    validationErrors: {},
+};
 
 const authReducer = (state, action) => {
     switch (action.type) {
         case 'LOGIN_START':
-            return { ...state, loading: true, error: null };
-        case 'LOGIN_SUCCESS':
-            return {
-                ...state,
-                loading: false,
-                isAuthenticated: true,
-                user: action.payload.user,
-                token: action.payload.token,
-                error: null
-            };
-        case 'LOGIN_FAILURE':
-            return { ...state, loading: false, error: action.payload, isAuthenticated: false };
-        case 'LOGOUT':
-            return { ...state, isAuthenticated: false, user: null, token: null };
         case 'REGISTER_START':
             return { ...state, loading: true, error: null };
+        case 'LOGIN_SUCCESS':
         case 'REGISTER_SUCCESS':
             return {
                 ...state,
@@ -29,108 +31,171 @@ const authReducer = (state, action) => {
                 isAuthenticated: true,
                 user: action.payload.user,
                 token: action.payload.token,
-                error: null
+                error: null,
             };
+        case 'LOGIN_FAILURE':
         case 'REGISTER_FAILURE':
-            return { ...state, loading: false, error: action.payload, isAuthenticated: false };
+            return {
+                ...state,
+                loading: false,
+                error: action.payload.message,
+                validationErrors: action.payload.errors || {},
+                isAuthenticated: false,
+            };
+        case 'LOGOUT':
+            return {
+                ...state,
+                isAuthenticated: false,
+                user: null,
+                token: null,
+                loading: false,
+            };
         case 'SET_USER':
-            return { ...state, user: action.payload, isAuthenticated: true };
+            return {
+                ...state,
+                user: action.payload,
+                isAuthenticated: !!action.payload,
+                loading: false,
+            };
+        case 'CLEAR_ERRORS':
+            return {
+                ...state,
+                error: null,
+                validationErrors: {},
+            };
         default:
             return state;
     }
 };
 
-const initialState = {
-    isAuthenticated: false,
-    user: null,
-    token: localStorage.getItem('token'),
-    loading: false,
-    error: null,
-};
-
 export const AuthProvider = ({ children }) => {
     const [state, dispatch] = useReducer(authReducer, initialState);
 
+    // Fetch current user if token exists
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            fetchCurrentUser();
-        }
+        const initAuth = async () => {
+            const token = localStorage.getItem('token');
+
+            if (token) {
+                api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                try {
+                    const response = await api.get('/v1/me');
+                    dispatch({ type: 'SET_USER', payload: response.data });
+                } catch (error) {
+                    localStorage.removeItem('token');
+                    delete api.defaults.headers.common['Authorization'];
+                    dispatch({ type: 'SET_USER', payload: null });
+                }
+            } else {
+                dispatch({ type: 'SET_USER', payload: null });
+            }
+        };
+
+        initAuth();
     }, []);
 
-    const fetchCurrentUser = async () => {
-        try {
-            const response = await api.get('/v1/me');
-            if (response.data.success) {
-                dispatch({ type: 'SET_USER', payload: response.data.data });
-            }
-        } catch (error) {
-            localStorage.removeItem('token');
-            delete api.defaults.headers.common['Authorization'];
-        }
-    };
-
-    const login = async (email, password) => {
+    const login = async (email, password, remember = false) => {
         dispatch({ type: 'LOGIN_START' });
+
         try {
-            const response = await api.post('/v1/login', { email, password });
+            const response = await api.post('/v1/login', {
+                email,
+                password,
+                remember,
+            });
 
-            if (response.data.success) {
-                const { user, token } = response.data.data;
-                localStorage.setItem('token', token);
-                api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            const userData = response.data;
+            const token = userData.token;
 
-                dispatch({
-                    type: 'LOGIN_SUCCESS',
-                    payload: { user, token }
-                });
-                return { success: true };
-            }
+            const { token: _, ...user } = userData;
+
+            localStorage.setItem('token', token);
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+            dispatch({
+                type: 'LOGIN_SUCCESS',
+                payload: { user, token },
+            });
+
+            return { success: true };
         } catch (error) {
-            const message = error.response?.data?.message || 'Pieteikšanās neizdevās';
-            dispatch({ type: 'LOGIN_FAILURE', payload: message });
-            return { success: false, error: message };
+            const errorData = error.response?.data;
+            dispatch({
+                type: 'LOGIN_FAILURE',
+                payload: {
+                    message: errorData?.message || 'Login failed',
+                    errors: errorData?.errors || {},
+                },
+            });
+
+            return {
+                success: false,
+                message: errorData?.message || 'Login failed',
+                errors: errorData?.errors || {},
+            };
         }
     };
 
     const register = async (userData) => {
         dispatch({ type: 'REGISTER_START' });
+
         try {
             const response = await api.post('/v1/register', userData);
 
-            if (response.data.success) {
-                const { user, token } = response.data.data;
-                localStorage.setItem('token', token);
-                api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            const registeredUser = response.data;
+            const token = registeredUser.token;
 
-                dispatch({
-                    type: 'REGISTER_SUCCESS',
-                    payload: { user, token }
-                });
-                return { success: true };
-            }
+            const { token: _, ...user } = registeredUser;
+
+            localStorage.setItem('token', token);
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+            dispatch({
+                type: 'REGISTER_SUCCESS',
+                payload: { user, token },
+            });
+
+            return { success: true };
         } catch (error) {
-            const message = error.response?.data?.message || 'Reģistrācija neizdevās';
-            dispatch({ type: 'REGISTER_FAILURE', payload: message });
-            return { success: false, error: message, errors: error.response?.data?.errors };
+            const errorData = error.response?.data;
+            dispatch({
+                type: 'REGISTER_FAILURE',
+                payload: {
+                    message: errorData?.message || 'Registration failed',
+                    errors: errorData?.errors || {},
+                },
+            });
+
+            return {
+                success: false,
+                message: errorData?.message || 'Registration failed',
+                errors: errorData?.errors || {},
+            };
         }
     };
 
     const logout = async () => {
+        try {
             await api.post('/v1/logout');
-
+        } catch (error) {
+            console.warn('Logout failed:', error);
+        }
 
         localStorage.removeItem('token');
         delete api.defaults.headers.common['Authorization'];
         dispatch({ type: 'LOGOUT' });
     };
 
+    const clearErrors = useCallback(() => {
+        dispatch({ type: 'CLEAR_ERRORS' });
+    }, []);
+
     const value = {
         ...state,
         login,
         register,
         logout,
+        clearErrors,
     };
 
     return (
