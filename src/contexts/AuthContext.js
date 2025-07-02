@@ -5,7 +5,7 @@ import React, {
     useEffect,
     useCallback,
 } from 'react';
-import api, { apiHelpers } from '../services/api';
+import { apiHelpers } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -72,30 +72,20 @@ const authReducer = (state, action) => {
 export const AuthProvider = ({ children }) => {
     const [state, dispatch] = useReducer(authReducer, initialState);
 
-    // Initialize CSRF token and fetch current user if token exists
+    // Initialize auth: fetch current user if token exists
     useEffect(() => {
         const initAuth = async () => {
-            try {
-                // Initialize CSRF token
-                await apiHelpers.init();
-
-                const token = localStorage.getItem('token');
-                if (token) {
-                    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                    try {
-                        const response = await apiHelpers.auth.me();
-                        dispatch({ type: 'SET_USER', payload: response.data });
-                    } catch (error) {
-                        console.warn('Failed to fetch user:', error);
-                        localStorage.removeItem('token');
-                        delete api.defaults.headers.common['Authorization'];
-                        dispatch({ type: 'SET_USER', payload: null });
-                    }
-                } else {
+            const token = localStorage.getItem('token');
+            if (token) {
+                try {
+                    const response = await apiHelpers.auth.me();
+                    dispatch({ type: 'SET_USER', payload: response.data });
+                } catch (error) {
+                    console.warn('Failed to fetch user:', error);
+                    localStorage.removeItem('token');
                     dispatch({ type: 'SET_USER', payload: null });
                 }
-            } catch (error) {
-                console.warn('Failed to initialize auth:', error);
+            } else {
                 dispatch({ type: 'SET_USER', payload: null });
             }
         };
@@ -107,24 +97,33 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'LOGIN_START' });
 
         try {
-            // Ensure CSRF token is set
-            await apiHelpers.init();
-
             const response = await apiHelpers.auth.login({
                 email,
                 password,
                 remember,
             });
 
-            const userData = response.data;
-            const token = userData.token;
+            const responseData = response.data;
 
-            // Extract user data without token
-            const { token: _, ...user } = userData;
+            // Extract token and user data
+            let token, user;
 
-            // Store token and set auth header
+            if (responseData.token) {
+                // Token is in response data directly
+                token = responseData.token;
+                user = { ...responseData };
+                delete user.token; // Remove token from user object
+            } else if (response.data.data && response.data.data.token) {
+                // Token is nested in data
+                token = response.data.data.token;
+                user = { ...response.data.data };
+                delete user.token;
+            } else {
+                throw new Error('No token received from server');
+            }
+
+            // Store token
             localStorage.setItem('token', token);
-            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
             dispatch({
                 type: 'LOGIN_SUCCESS',
@@ -155,20 +154,29 @@ export const AuthProvider = ({ children }) => {
         dispatch({ type: 'REGISTER_START' });
 
         try {
-            // Ensure CSRF token is set
-            await apiHelpers.init();
-
             const response = await apiHelpers.auth.register(userData);
 
-            const registeredUser = response.data;
-            const token = registeredUser.token;
+            const responseData = response.data;
 
-            // Extract user data without token
-            const { token: _, ...user } = registeredUser;
+            // Extract token and user data
+            let token, user;
 
-            // Store token and set auth header
+            if (responseData.token) {
+                // Token is in response data directly
+                token = responseData.token;
+                user = { ...responseData };
+                delete user.token; // Remove token from user object
+            } else if (response.data.data && response.data.data.token) {
+                // Token is nested in data
+                token = response.data.data.token;
+                user = { ...response.data.data };
+                delete user.token;
+            } else {
+                throw new Error('No token received from server');
+            }
+
+            // Store token
             localStorage.setItem('token', token);
-            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
             dispatch({
                 type: 'REGISTER_SUCCESS',
@@ -203,7 +211,6 @@ export const AuthProvider = ({ children }) => {
         } finally {
             // Always clear local state regardless of API call success
             localStorage.removeItem('token');
-            delete api.defaults.headers.common['Authorization'];
             dispatch({ type: 'LOGOUT' });
         }
     };
