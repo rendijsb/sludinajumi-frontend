@@ -4,9 +4,11 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/
 
 export const api = axios.create({
     baseURL: API_BASE_URL,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
     },
 });
 
@@ -18,18 +20,6 @@ api.interceptors.request.use((config) => {
     }
     return config;
 });
-
-// Response interceptor to handle token expiration
-api.interceptors.response.use(
-    (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
-            localStorage.removeItem('auth_token');
-            window.location.href = '/login';
-        }
-        return Promise.reject(error);
-    }
-);
 
 export interface User {
     id: number;

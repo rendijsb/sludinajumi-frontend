@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { authAPI } from '../lib/api';
+import {api, authAPI} from '../lib/api';
 import type { User, LoginData, RegisterData } from '../lib/api';
 
 interface AuthContextType {
@@ -53,10 +53,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const login = async (data: LoginData) => {
         try {
+            await api.get('/sanctum/csrf-cookie');
+
             const response = await authAPI.login(data);
-            if (response.token) {
-                localStorage.setItem('auth_token', response.token);
-            }
+            // No token storage needed - cookies handle this
             setUser(response.data);
         } catch (error) {
             console.error('Login failed:', error);
@@ -83,7 +83,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch (error) {
             console.error('Logout failed:', error);
         } finally {
-            localStorage.removeItem('auth_token');
             setUser(null);
         }
     };
